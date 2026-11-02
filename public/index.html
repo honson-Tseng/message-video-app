@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>填寫留言</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="wrap">
+    <!-- 步驟 1：填寫 -->
+    <form id="form" class="card">
+      <h1 id="title">載入中…</h1>
+      <p id="intro" class="muted"></p>
+      <label for="name">你的名字（會顯示在影片最後，可不填）</label>
+      <input type="text" id="name" maxlength="50" placeholder="例如：小美" />
+      <div id="questions"></div>
+      <button type="submit" class="full" id="submitBtn">送出並生成影片 🎬</button>
+      <div class="msg" id="formMsg"></div>
+    </form>
+
+    <!-- 步驟 2：生成影片 -->
+    <div id="videoCard" class="card hidden">
+      <h2 id="videoHeading">正在生成你的影片…</h2>
+      <p class="muted" id="videoHint">影片會即時播放並同步錄製，請保持此頁面開啟。</p>
+      <canvas id="canvas"></canvas>
+      <video id="result" class="hidden" controls playsinline></video>
+      <div class="progress"><div id="bar"></div></div>
+      <div class="actions hidden" id="doneActions">
+        <a class="btn" id="downloadBtn" download>下載影片 ⬇️</a>
+        <button class="secondary" id="againBtn" type="button">再看一次</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/video.js"></script>
+  <script>
+    let config;
+    const $ = id => document.getElementById(id);
+
+    async function init() {
+      config = await (await fetch('/api/config')).json();
+      document.title = config.title;
+      $('title').textContent = config.title;
+      $('intro').textContent = config.intro || '';
+      $('questions').innerHTML = config.questions.map((q, i) => `
+        <label for="q${i}">${i + 1}. ${escapeHtml(q)}</label>
+        <textarea id="q${i}" maxlength="1000" placeholder="可以寫好幾句，換行或用句號分開，影片會一句一句播"></textarea>
+      `).join('');
+    }
+
+    function escapeHtml(s) {
+      return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    let lastLines = [], lastName = '';
+
+    $('form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const answers = config.questions.map((_, i) => $('q' + i).value.trim());
+      if (answers.every(a => !a)) { $('formMsg').textContent = '請至少回答一題喔！'; return; }
+
+      $('submitBtn').disabled = true;
+      $('formMsg').textContent = '';
+      const res = await fetch('/api/responses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: $('name').value, answers })
+      });
+      if (!res.ok) {
+        $('formMsg').textContent = (await res.json()).error || '送出失敗，請再試一次';
+        $('submitBtn').disabled = false;
+        return;
+      }
+
+      lastLines = answers.flatMap(a => VideoMaker.splitSentences(a));
+      lastName = $('name').value.trim();
+      $('form').classList.add('hidden');
+      $('videoCard').classList.remove('hidden');
+      makeVideo();
+    });
+
+    async function makeVideo() {
+      $('result').classList.add('hidden');
+      $('canvas').classList.remove('hidden');
+      $('doneActions').classList.add('hidden');
+      $('videoHeading').textContent = '正在生成你的影片…';
+      $('videoHint').classList.remove('hidden');
+
+      const { blob, ext } = await VideoMaker.render({
+        canvas: $('canvas'),
+        lines: lastLines,
+        config,
+        title: config.title,
+        signature: lastName,
+        onProgress: p => ($('bar').style.width = (p * 100).toFixed(1) + '%')
+      });
+
+      const url = URL.createObjectURL(blob);
+      $('result').src = url;
+      $('downloadBtn').href = url;
+      $('downloadBtn').download = `留言影片-${Date.now()}.${ext}`;
+      $('canvas').classList.add('hidden');
+      $('result').classList.remove('hidden');
+      $('doneActions').classList.remove('hidden');
+      $('videoHint').classList.add('hidden');
+      $('videoHeading').textContent = '影片完成了！🎉';
+    }
+
+    $('againBtn').addEventListener('click', () => { $('result').currentTime = 0; $('result').play(); });
+    init();
+  </script>
+</body>
+</html>
