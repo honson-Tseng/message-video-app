@@ -51,7 +51,13 @@ function readJSON(file, fallback) {
 function writeJSON(file, data) {
   fs.writeFileSync(file, JSON.stringify(data, null, 2));
 }
-const getConfig = () => ({ ...DEFAULT_CONFIG, ...readJSON(CONFIG_FILE, {}) });
+const getConfig = () => {
+  const cfg = { ...DEFAULT_CONFIG, ...readJSON(CONFIG_FILE, {}) };
+  // 後台沒上傳時，一律退回 media 資料夾裡的預設檔
+  cfg.backgroundImage = cfg.backgroundImage || DEFAULT_CONFIG.backgroundImage;
+  cfg.music = cfg.music || DEFAULT_CONFIG.music;
+  return cfg;
+};
 
 app.use(express.json({ limit: '1mb' }));
 app.use(express.static(path.join(__dirname, 'public')));

@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>大螢幕 - 所有人的留言</title>
+  <link rel="stylesheet" href="/style.css" />
+  <style>
+    #stage { position: fixed; inset: 0; background: #000; display: flex; align-items: center; justify-content: center; z-index: 10; }
+    #stage canvas { width: auto; height: auto; max-width: 100vw; max-height: 100vh; border-radius: 0; }
+    #stageBar { position: fixed; right: 14px; bottom: 14px; z-index: 11; display: flex; gap: 8px; opacity: .25; transition: opacity .2s; }
+    #stageBar:hover { opacity: 1; }
+    #stageBar span { color: #fff; background: rgba(0,0,0,.5); padding: 7px 12px; border-radius: 10px; font-size: .88rem; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div id="loginCard" class="card">
+      <h1>大螢幕播放</h1>
+      <p class="muted">輸入管理密碼後，就能播放所有人的留言。</p>
+      <label for="pw">管理密碼</label>
+      <input type="password" id="pw" placeholder="點這裡輸入密碼" />
+      <button class="full" id="loginBtn">進入</button>
+      <div class="msg" id="loginMsg"></div>
+    </div>
+
+    <div id="panel" class="card hidden">
+      <h1>所有人的留言</h1>
+      <p class="muted">目前共有 <b id="people">0</b> 人留言、<b id="sentences">0</b> 句。新留言會自動更新。</p>
+
+      <h2 style="margin-top:22px">📺 現場即時播放</h2>
+      <p class="muted">全螢幕輪播所有留言，有人新送出留言時，會優先插播新的。適合投影在活動現場。</p>
+      <button id="liveBtn">▶ 開始即時播放（全螢幕）</button>
+
+      <h2 style="margin-top:28px">🎬 生成一支完整影片</h2>
+      <p class="muted">把目前所有人的留言，從頭到尾錄成一支影片（約 <b id="duration">0</b> 秒），完成後可下載。錄製時請保持此頁面開啟。</p>
+      <button class="secondary" id="recordBtn">開始生成影片</button>
+      <div id="recordBox" class="hidden" style="margin-top:14px">
+        <canvas id="recCanvas"></canvas>
+        <video id="recResult" class="hidden" controls playsinline></video>
+        <div class="progress"><div id="bar"></div></div>
+        <a class="btn hidden" id="dlBtn" download>下載完整影片 ⬇️</a>
+      </div>
+    </div>
+  </div>
+
+  <div id="stage" class="hidden"><canvas id="liveCanvas"></canvas></div>
+  <div id="stageBar" class="hidden"><span id="liveStatus"></span><button class="small secondary" id="exitBtn">離開</button></div>
+
+  <script src="/video.js"></script>
+  <script>
+    const $ = id => document.getElementById(id);
+    let pw = sessionStorage.getItem('adminPw') || '';
+    let config, responses = [], items = [], player = null;
+
+    async function fetchResponses() {
+      const r = await fetch('/api/admin/responses', { headers: { 'x-admin-password': encodeURIComponent(pw) } });
+      if (!r.ok) throw new Error('密碼錯誤');
+      responses = await r.json();
+      items = VideoMaker.responsesToItems(responses);
+      $('people').textContent = responses.length;
+      $('sentences').textContent = items.length;
+      $('duration').textContent = Math.round(items.length * config.secondsPerLine + 5.3);
+    }
+
+    async function login() {
+      try {
+        config = await (await fetch('/api/config')).json();
+        await fetchResponses();
+        sessionStorage.setItem('adminPw', pw);
+        $('loginCard').classList.add('hidden');
+        $('panel').classList.remove('hidden');
+        setInterval(() => fetchResponses().catch(() => {}), 5000); // 每 5 秒抓一次新留言
+      } catch (e) {
+        sessionStorage.removeItem('adminPw');
+        $('loginMsg').textContent = pw ? '密碼錯誤，請再確認一次' : '';
+      }
+    }
+    $('loginBtn').onclick = () => { pw = $('pw').value.trim(); if (pw) login(); };
+    $('pw').onkeydown = e => e.key === 'Enter' && $('loginBtn').click();
+    if (pw) login();
+
+    // ---------- 即時播放 ----------
+    $('liveBtn').onclick = async () => {
+      config = await (await fetch('/api/config')).json();
+      $('stage').classList.remove('hidden');
+      $('stageBar').classList.remove('hidden');
+      try { await document.documentElement.requestFullscreen(); } catch {}
+      player = await VideoMaker.live({
+        canvas: $('liveCanvas'), config, title: config.title,
+        getItems: () => items,
+        onStatus: ({ played, total }) => $('liveStatus').textContent = `${played} / ${total} 句`
+      });
+    };
+    function exitLive() {
+      if (player) player.stop();
+      player = null;
+      $('stage').classList.add('hidden');
+      $('stageBar').classList.add('hidden');
+      if (document.fullscreenElement) document.exitFullscreen();
+    }
+    $('exitBtn').onclick = exitLive;
+    document.addEventListener('keydown', e => e.key === 'Escape' && player && exitLive());
+
+    // ---------- 錄成一支完整影片 ----------
+    $('recordBtn').onclick = async () => {
+      await fetchResponses();
+      if (!items.length) return alert('還沒有人留言');
+      config = await (await fetch('/api/config')).json();
+      $('recordBtn').disabled = true;
+      $('recordBox').classList.remove('hidden');
+      $('recResult').classList.add('hidden');
+      $('recCanvas').classList.remove('hidden');
+      $('dlBtn').classList.add('hidden');
+      const { blob, ext } = await VideoMaker.render({
+        canvas: $('recCanvas'), lines: items, config, title: config.title, signature: '',
+        onProgress: p => $('bar').style.width = (p * 100) + '%'
+      });
+      const url = URL.createObjectURL(blob);
+      $('recResult').src = url;
+      $('dlBtn').href = url;
+      $('dlBtn').download = `所有人的留言-${Date.now()}.${ext}`;
+      $('recCanvas').classList.add('hidden');
+      $('recResult').classList.remove('hidden');
+      $('dlBtn').classList.remove('hidden');
+      $('recordBtn').disabled = false;
+    };
+  </script>
+</body>
+</html>

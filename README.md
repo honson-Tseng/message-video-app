@@ -23,7 +23,8 @@ npm install          # 安裝 express、multer
 npm start            # 啟動
 ```
 
-- 填寫頁面：http://localhost:3000/
+- 填寫頁面：http://localhost:3000/ （傳給大家）
+- 大螢幕：http://localhost:3000/screen.html （即時輪播所有人的留言、生成並下載合併影片）
 - 管理後台：http://localhost:3000/admin.html （預設密碼 `admin123`）
 
 改密碼（強烈建議）：
@@ -65,6 +66,8 @@ message-video-app/
 └── public/
     ├── index.html      填寫頁面（大家點連結看到的）
     ├── admin.html      管理後台（你用的）
+    ├── screen.html     大螢幕：所有人的留言一起播放／錄成一支影片
+    ├── media/          放永久的背景圖與音樂（檔名不限）
     ├── video.js        影片生成核心
     ├── style.css       外觀
     └── uploads/        （自動產生）上傳的圖片、音樂
