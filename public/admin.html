@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>管理後台</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="wrap">
+    <!-- 登入 -->
+    <div id="loginCard" class="card">
+      <h1>管理後台</h1>
+      <label for="pw">管理密碼</label>
+      <input type="password" id="pw" placeholder="點這裡輸入密碼" autocomplete="current-password" />
+      <label style="font-weight:400;margin-top:8px"><input type="checkbox" id="showPw" /> 顯示密碼</label>
+      <button class="full" id="loginBtn">登入</button>
+      <div class="msg" id="loginMsg"></div>
+    </div>
+
+    <div id="adminArea" class="hidden">
+      <!-- 問題設定 -->
+      <div class="card">
+        <h2>📝 問卷內容</h2>
+        <label>標題（也是影片片頭）</label>
+        <input type="text" id="title" />
+        <label>說明文字</label>
+        <input type="text" id="intro" />
+        <label>問題</label>
+        <div id="qList"></div>
+        <button class="secondary small" id="addQ">＋ 新增問題</button>
+      </div>
+
+      <!-- 影片樣式 -->
+      <div class="card">
+        <h2>🎨 影片樣式</h2>
+        <div class="row">
+          <div><label>每句秒數</label><input type="number" id="secondsPerLine" min="1" max="15" step="0.5" /></div>
+          <div><label>字體大小</label><input type="number" id="fontSize" min="20" max="120" /></div>
+        </div>
+        <div class="row">
+          <div><label>文字顏色</label><input type="color" id="textColor" style="width:100%;height:46px" /></div>
+          <div><label>畫面比例</label>
+            <select id="aspect"><option value="16:9">16:9 橫式</option><option value="9:16">9:16 直式（手機）</option></select>
+          </div>
+        </div>
+        <label>背景變暗程度：<span id="overlayVal"></span></label>
+        <input type="range" id="overlay" min="0" max="0.8" step="0.05" style="width:100%" />
+        <button class="full" id="saveBtn">儲存設定</button>
+        <div class="msg" id="saveMsg"></div>
+      </div>
+
+      <!-- 背景圖與音樂 -->
+      <div class="card">
+        <h2>🖼️ 背景圖片</h2>
+        <input type="file" id="imgFile" accept="image/*" />
+        <div class="media-preview" id="imgPreview"></div>
+        <h2 style="margin-top:26px">🎵 背景音樂</h2>
+        <input type="file" id="musicFile" accept="audio/*" />
+        <div class="media-preview" id="musicPreview"></div>
+        <div class="msg" id="mediaMsg"></div>
+      </div>
+
+      <!-- 預覽 -->
+      <div class="card">
+        <h2>▶️ 預覽影片效果</h2>
+        <p class="muted">用範例文字試播一次，確認背景、音樂、字的樣子。</p>
+        <button class="secondary" id="previewBtn">播放預覽</button>
+        <div id="previewBox" class="hidden" style="margin-top:14px">
+          <canvas id="canvas"></canvas>
+          <div class="progress"><div id="bar"></div></div>
+          <a class="btn hidden" id="dlBtn" download>下載這支影片</a>
+        </div>
+      </div>
+
+      <!-- 回覆 -->
+      <div class="card">
+        <h2>💌 收到的回覆 <span id="count" class="muted"></span></h2>
+        <div class="actions" style="margin-top:0">
+          <button class="secondary small" id="refreshBtn">重新整理</button>
+          <button class="secondary small" id="allVideoBtn">用全部回覆生成一支影片</button>
+          <button class="secondary small" id="exportBtn">匯出 JSON</button>
+          <button class="danger small" id="clearBtn">清空全部</button>
+        </div>
+        <div id="respList"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/video.js"></script>
+  <script>
+    const $ = id => document.getElementById(id);
+    let pw = sessionStorage.getItem('adminPw') || '';
+    let config, responses = [];
+
+    const api = (url, opts = {}) =>
+      fetch(url, { ...opts, headers: { 'x-admin-password': encodeURIComponent(pw), ...(opts.body && !(opts.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}), ...(opts.headers || {}) } })
+        .then(async r => { const j = await r.json(); if (!r.ok) throw new Error(j.error || '發生錯誤'); return j; });
+
+    const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+    // ---------- 登入 ----------
+    async function login() {
+      try {
+        await api('/api/admin/login', { method: 'POST' });
+        sessionStorage.setItem('adminPw', pw);
+        $('loginCard').classList.add('hidden');
+        $('adminArea').classList.remove('hidden');
+        loadConfig();
+        loadResponses();
+      } catch (e) {
+        sessionStorage.removeItem('adminPw');
+        $('loginMsg').textContent = pw ? '密碼錯誤，請再確認一次' : '';
+      }
+    }
+    $('showPw').onchange = () => $('pw').type = $('showPw').checked ? 'text' : 'password';
+    $('loginBtn').onclick = () => {
+      pw = $('pw').value.trim();
+      if (!pw) { $('loginMsg').textContent = '請先在上面的框框輸入密碼'; $('pw').focus(); return; }
+      login();
+    };
+    $('pw').onkeydown = e => e.key === 'Enter' && $('loginBtn').click();
+    if (pw) login();
+
+    // ---------- 設定 ----------
+    async function loadConfig() {
+      config = await (await fetch('/api/config')).json();
+      ['title', 'intro', 'secondsPerLine', 'fontSize', 'textColor', 'aspect', 'overlay'].forEach(k => $(k).value = config[k] ?? '');
+      $('overlayVal').textContent = config.overlay;
+      renderQuestions(config.questions);
+      renderMedia();
+    }
+    $('overlay').oninput = () => $('overlayVal').textContent = $('overlay').value;
+
+    function renderQuestions(qs) {
+      $('qList').innerHTML = qs.map(q => `
+        <div class="q-item"><input type="text" value="${esc(q)}" /><button class="danger small" onclick="this.parentNode.remove()">刪除</button></div>`).join('');
+    }
+    $('addQ').onclick = () => {
+      const qs = [...$('qList').querySelectorAll('input')].map(i => i.value);
+      renderQuestions([...qs, '']);
+      $('qList').lastElementChild.querySelector('input').focus();
+    };
+
+    function collectConfig() {
+      return {
+        title: $('title').value, intro: $('intro').value,
+        questions: [...$('qList').querySelectorAll('input')].map(i => i.value),
+        secondsPerLine: $('secondsPerLine').value, fontSize: $('fontSize').value,
+        textColor: $('textColor').value, aspect: $('aspect').value, overlay: $('overlay').value
+      };
+    }
+    $('saveBtn').onclick = async () => {
+      try {
+        config = await api('/api/admin/config', { method: 'PUT', body: JSON.stringify(collectConfig()) });
+        $('saveMsg').textContent = '✅ 已儲存';
+        renderQuestions(config.questions);
+      } catch (e) { $('saveMsg').textContent = '❌ ' + e.message; }
+      setTimeout(() => $('saveMsg').textContent = '', 2500);
+    };
+
+    // ---------- 背景圖 / 音樂 ----------
+    function renderMedia() {
+      $('imgPreview').innerHTML = config.backgroundImage
+        ? `<img src="${config.backgroundImage}"><br><button class="danger small" onclick="removeMedia('image')">移除圖片</button>` : '<span class="muted">尚未上傳（會使用預設漸層背景）</span>';
+      $('musicPreview').innerHTML = config.music
+        ? `<audio controls src="${config.music}" style="width:100%"></audio><button class="danger small" onclick="removeMedia('music')">移除音樂</button>` : '<span class="muted">尚未上傳（影片將沒有聲音）</span>';
+    }
+    async function uploadMedia(kind, file) {
+      if (!file) return;
+      $('mediaMsg').textContent = '上傳中…';
+      const fd = new FormData(); fd.append('file', file);
+      try {
+        config = await api('/api/admin/upload?kind=' + kind, { method: 'POST', body: fd });
+        $('mediaMsg').textContent = '✅ 上傳成功';
+        renderMedia();
+      } catch (e) { $('mediaMsg').textContent = '❌ ' + e.message; }
+    }
+    window.removeMedia = async kind => { config = await api('/api/admin/media/' + kind, { method: 'DELETE' }); renderMedia(); };
+    $('imgFile').onchange = e => uploadMedia('image', e.target.files[0]);
+    $('musicFile').onchange = e => uploadMedia('music', e.target.files[0]);
+
+    // ---------- 影片 ----------
+    async function play(lines, signature) {
+      $('previewBox').classList.remove('hidden');
+      $('dlBtn').classList.add('hidden');
+      $('previewBox').scrollIntoView({ behavior: 'smooth' });
+      const cfg = { ...config, ...collectConfig(), secondsPerLine: Number($('secondsPerLine').value), fontSize: Number($('fontSize').value), overlay: Number($('overlay').value) };
+      const { blob, ext } = await VideoMaker.render({
+        canvas: $('canvas'), lines, config: cfg, title: cfg.title, signature,
+        onProgress: p => $('bar').style.width = (p * 100) + '%'
+      });
+      $('dlBtn').href = URL.createObjectURL(blob);
+      $('dlBtn').download = `影片-${Date.now()}.${ext}`;
+      $('dlBtn').classList.remove('hidden');
+    }
+    $('previewBtn').onclick = () => play(['謝謝你一直以來的照顧。', '和你在一起的每一天都很開心！', '祝你未來一切順利 ✨'], '預覽');
+
+    // ---------- 回覆 ----------
+    async function loadResponses() {
+      responses = await api('/api/admin/responses');
+      $('count').textContent = `（${responses.length} 份）`;
+      $('respList').innerHTML = responses.slice().reverse().map(r => `
+        <div class="resp">
+          <b>${esc(r.name || '匿名')}</b> <small>${new Date(r.createdAt).toLocaleString()}</small>
+          ${r.questions.map((q, i) => r.answers[i] ? `<div><span class="muted">${esc(q)}</span><br>${esc(r.answers[i]).replace(/\n/g, '<br>')}</div>` : '').join('')}
+          <button class="secondary small" style="margin-top:8px" onclick="playResp('${r.id}')">▶ 生成這份的影片</button>
+        </div>`).join('') || '<p class="muted">還沒有人填寫</p>';
+    }
+    window.playResp = id => {
+      const r = responses.find(x => x.id === id);
+      play(r.answers.flatMap(VideoMaker.splitSentences), r.name);
+    };
+    $('allVideoBtn').onclick = () => {
+      const lines = responses.flatMap(r => r.answers.flatMap(VideoMaker.splitSentences));
+      if (!lines.length) return alert('還沒有回覆');
+      play(lines, '大家');
+    };
+    $('refreshBtn').onclick = loadResponses;
+    $('exportBtn').onclick = () => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([JSON.stringify(responses, null, 2)], { type: 'application/json' }));
+      a.download = 'responses.json'; a.click();
+    };
+    $('clearBtn').onclick = async () => {
+      if (!confirm('確定要刪除全部回覆嗎？無法復原。')) return;
+      await api('/api/admin/responses', { method: 'DELETE' });
+      loadResponses();
+    };
+  </script>
+</body>
+</html>
