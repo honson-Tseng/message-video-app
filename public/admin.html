@@ -12,9 +12,9 @@
     <div id="loginCard" class="card">
       <h1>管理後台</h1>
       <label for="pw">管理密碼</label>
-      <input type="password" id="pw" placeholder="點這裡輸入密碼" autocomplete="current-password" />
-      <label style="font-weight:400;margin-top:8px"><input type="checkbox" id="showPw" /> 顯示密碼</label>
-      <button class="full" id="loginBtn">登入</button>
+      <input type="text" id="pw" placeholder="點這裡輸入密碼（請切換成英文輸入）" autocomplete="off" autocapitalize="off" spellcheck="false" />
+      <p class="muted" style="margin:6px 0 0;font-size:.9rem">打不了字？也可以直接在網址後面加上 <b>?pw=你的密碼</b> 開啟本頁。</p>
+            <button class="full" id="loginBtn">登入</button>
       <div class="msg" id="loginMsg"></div>
     </div>
 
@@ -91,7 +91,9 @@
   <script src="/video.js"></script>
   <script>
     const $ = id => document.getElementById(id);
-    let pw = sessionStorage.getItem('adminPw') || '';
+    const urlPw = new URLSearchParams(location.search).get('pw');
+    let pw = (urlPw || sessionStorage.getItem('adminPw') || '').trim();
+    if (urlPw) history.replaceState(null, '', location.pathname); // 從網址列移除密碼
     let config, responses = [];
 
     const api = (url, opts = {}) =>
@@ -114,13 +116,12 @@
         $('loginMsg').textContent = pw ? '密碼錯誤，請再確認一次' : '';
       }
     }
-    $('showPw').onchange = () => $('pw').type = $('showPw').checked ? 'text' : 'password';
     $('loginBtn').onclick = () => {
       pw = $('pw').value.trim();
       if (!pw) { $('loginMsg').textContent = '請先在上面的框框輸入密碼'; $('pw').focus(); return; }
       login();
     };
-    $('pw').onkeydown = e => e.key === 'Enter' && $('loginBtn').click();
+    $('pw').addEventListener('keydown', e => { if (e.key === 'Enter') $('loginBtn').click(); });
     if (pw) login();
 
     // ---------- 設定 ----------
