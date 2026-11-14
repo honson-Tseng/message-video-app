@@ -238,6 +238,13 @@
         if (st.storage === 'sheet' && !st.error && !st.pending) {
           box.className = 'storage ok';
           box.textContent = '✅ 留言會自動存到 Google 試算表，網站休眠或重啟都不會消失。';
+          if (st.sheetLink) {
+            const a = document.createElement('a');
+            a.href = st.sheetLink; a.target = '_blank'; a.rel = 'noopener';
+            a.className = 'btn small sheet-link'; a.textContent = '📄 打開 Google 試算表';
+            box.appendChild(document.createElement('br'));
+            box.appendChild(a);
+          }
         } else if (st.storage === 'sheet') {
           box.className = 'storage warn';
           box.textContent = `⚠️ Google 試算表連線有問題${st.pending ? `（有 ${st.pending} 則還沒存進去，會每分鐘自動重試）` : ''}：${st.error || ''}`;
