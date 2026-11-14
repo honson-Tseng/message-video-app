@@ -62,6 +62,7 @@
       <div class="card">
         <h2>🖼️ 背景圖片</h2>
         <input type="file" id="imgFile" accept="image/*" />
+        <p class="muted" style="font-size:.88rem;margin:6px 0 0">建議 3MB 以下，最大 10MB。</p>
         <div class="media-preview" id="imgPreview"></div>
         <div class="msg" id="mediaMsg"></div>
       </div>
@@ -162,10 +163,13 @@
     $('saveBtn').onclick = async () => {
       try {
         config = await api('/api/admin/config', { method: 'PUT', body: JSON.stringify(collectConfig()) });
-        $('saveMsg').textContent = '✅ 已儲存';
+        $('saveMsg').textContent =
+          config._savedToSheet ? '✅ 已儲存（已同步到 Google，網站休眠也不會被重置）'
+          : config._storage === 'sheet' ? '⚠️ 已暫時儲存，但沒能同步到 Google，網站休眠後可能被重置：' + (config._error || '')
+          : '✅ 已儲存（尚未設定 Google 試算表，網站休眠後會被重置）';
         renderQuestions(config.questions);
       } catch (e) { $('saveMsg').textContent = '❌ ' + e.message; }
-      setTimeout(() => $('saveMsg').textContent = '', 2500);
+      setTimeout(() => $('saveMsg').textContent = '', 8000);
     };
 
     // ---------- 背景圖 ----------
@@ -179,7 +183,10 @@
       const fd = new FormData(); fd.append('file', file);
       try {
         config = await api('/api/admin/upload?kind=' + kind, { method: 'POST', body: fd });
-        $('mediaMsg').textContent = '✅ 上傳成功';
+        $('mediaMsg').textContent =
+          config._savedToSheet ? '✅ 上傳成功（已存到 Google 雲端硬碟，網站休眠也不會消失）'
+          : config._storage === 'sheet' ? '⚠️ 已上傳，但沒能存到 Google，網站休眠後會消失：' + (config._error || '')
+          : '✅ 上傳成功（尚未設定 Google 試算表，網站休眠後會消失）';
         renderMedia();
       } catch (e) { $('mediaMsg').textContent = '❌ ' + e.message; }
     }
