@@ -41,3 +41,6 @@ canvas, video { width: 100%; border-radius: 14px; background: #000; display: blo
 .resp { border-top: 1px solid #eee; padding: 14px 0; }
 .resp small { color: #999; }
 .msg { margin-top: 10px; font-weight: 700; }
+.req { color: #d6334f; font-size: .85rem; font-weight: 700; margin-left: 4px; }
+.field-error { color: #d6334f; font-size: .9rem; margin-top: 6px; }
+input.invalid { border-color: #d6334f; background: #fff6f7; }

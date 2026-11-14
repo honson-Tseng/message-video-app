@@ -9,13 +9,14 @@
 <body>
   <div class="wrap">
     <!-- 步驟 1：填寫 -->
-    <form id="form" class="card">
+    <form id="form" class="card" novalidate>
       <h1 id="title">載入中…</h1>
       <p id="intro" class="muted"></p>
-      <label for="name">你的名字（會顯示在影片最後，可不填）</label>
-      <input type="text" id="name" maxlength="50" placeholder="例如：小美" />
+      <label for="name">你的名字 <span class="req">*必填</span></label>
+      <input type="text" id="name" maxlength="50" placeholder="例如：小美" required />
+      <div class="field-error hidden" id="nameError">請填寫你的名字</div>
       <div id="questions"></div>
-      <button type="submit" class="full" id="submitBtn">送出並生成影片 🎬</button>
+      <button type="submit" class="full" id="submitBtn">送出回答</button>
       <div class="msg" id="formMsg"></div>
     </form>
 
@@ -53,7 +54,7 @@
       $('intro').textContent = config.intro || '';
       $('questions').innerHTML = config.questions.map((q, i) => `
         <label for="q${i}">${i + 1}. ${escapeHtml(q)}</label>
-        <textarea id="q${i}" maxlength="1000" placeholder="可以寫好幾句，換行或用句號分開，影片會一句一句播"></textarea>
+        <textarea id="q${i}" maxlength="1000" placeholder="寫下你想說的話…"></textarea>
       `).join('');
     }
 
@@ -63,9 +64,22 @@
 
     let lastLines = [], lastName = '';
 
+    $('name').addEventListener('input', () => {
+      $('nameError').classList.add('hidden');
+      $('name').classList.remove('invalid');
+    });
+
     $('form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const answers = config.questions.map((_, i) => $('q' + i).value.trim());
+      const name = $('name').value.trim();
+      if (!name) {
+        $('nameError').classList.remove('hidden');
+        $('name').classList.add('invalid');
+        $('name').focus();
+        $('name').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+      }
       if (answers.every(a => !a)) { $('formMsg').textContent = '請至少回答一題喔！'; return; }
 
       $('submitBtn').disabled = true;
@@ -73,7 +87,7 @@
       const res = await fetch('/api/responses', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: $('name').value, answers })
+        body: JSON.stringify({ name, answers })
       });
       if (!res.ok) {
         $('formMsg').textContent = (await res.json()).error || '送出失敗，請再試一次';
