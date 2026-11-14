@@ -95,17 +95,18 @@ async function sheetCall(payload) {
   return data;
 }
 
-// 從試算表讀回所有留言（試算表為主，本機有但試算表沒有的會補寫上去）
+// 從試算表讀回所有留言（試算表為主）
+// 本機有、試算表沒有的留言：還沒寫進去過的會補寫；寫進去過的代表你在試算表刪掉了，就跟著刪掉
 async function loadFromSheet() {
   const data = await sheetCall({ action: 'list' });
-  const fromSheet = data.responses || [];
+  const fromSheet = (data.responses || []).map(r => ({ ...r, _synced: true }));
   if (data.url) sheetLink = data.url;
   if (data.config && typeof data.config === 'object') {
     writeJSON(CONFIG_FILE, data.config); // 讀回後台設定
     await restoreImage(data.config).catch(e => console.error('❌ 讀回背景圖片失敗：', e.message));
   }
   const ids = new Set(fromSheet.map(r => r.id));
-  const localOnly = responses.filter(r => !ids.has(r.id));
+  const localOnly = responses.filter(r => !ids.has(r.id) && !r._synced);
   responses = [...fromSheet, ...localOnly].sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
   pending = localOnly;
   saveLocal();
@@ -122,8 +123,11 @@ function flushPending() {
   flushing = (async () => {
     while (pending.length) {
       try {
-        await sheetCall({ action: 'add', entry: pending[0] });
+        const { _synced, ...entry } = pending[0];
+        await sheetCall({ action: 'add', entry });
+        pending[0]._synced = true; // 標記「已寫進試算表」
         pending.shift();
+        saveLocal();
         lastSheetError = '';
       } catch (e) {
         lastSheetError = e.message;
@@ -136,8 +140,11 @@ function flushPending() {
   return flushing;
 }
 // 每分鐘：還沒讀到試算表就再試一次；讀到了就補寫失敗的留言
+// 每 5 分鐘：重新讀一次試算表（你在試算表刪掉的留言，最慢 5 分鐘後網站也會跟著消失）
+let tick = 0;
 if (useSheet) setInterval(() => {
-  if (!sheetLoaded) loadFromSheet().catch(e => (lastSheetError = e.message));
+  tick++;
+  if (!sheetLoaded || tick % 5 === 0) loadFromSheet().catch(e => (lastSheetError = e.message));
   else flushPending();
 }, 60 * 1000);
 
@@ -216,11 +223,11 @@ app.post('/api/responses', async (req, res) => {
   };
   responses.push(entry);
   saveLocal();
+  res.json({ ok: true, id: entry.id }); // 先告訴填寫者成功，不用等 Google
   if (useSheet) {
     pending.push(entry);
-    await flushPending(); // 寫進 Google 試算表（失敗會每分鐘自動重試）
+    flushPending(); // 在背景依序寫進 Google 試算表（失敗會每分鐘自動重試）
   }
-  res.json({ ok: true, id: entry.id });
 });
 
 // ================= 管理 API（你自己用）=================
@@ -294,6 +301,24 @@ app.get('/api/admin/responses', auth, async (req, res) => {
     try { await loadFromSheet(); } catch (e) { lastSheetError = e.message; }
   }
   res.json(responses);
+});
+
+// 刪除單一則留言（試算表也同步刪除）
+app.delete('/api/admin/responses/:id', auth, async (req, res) => {
+  const entry = responses.find(r => r.id === req.params.id);
+  if (!entry) return res.json({ ok: true });
+  if (useSheet && entry._synced) {
+    try { await sheetCall({ action: 'delete', id: entry.id }); } catch (e) {
+      const msg = e.message === '未知的動作'
+        ? 'Google Apps Script 是舊版，請貼上新版程式並用「新版本」重新部署'
+        : e.message;
+      return res.status(500).json({ error: '刪除失敗：' + msg });
+    }
+  }
+  responses = responses.filter(r => r.id !== entry.id);
+  pending = pending.filter(r => r.id !== entry.id);
+  saveLocal();
+  res.json({ ok: true });
 });
 
 app.delete('/api/admin/responses', auth, async (req, res) => {

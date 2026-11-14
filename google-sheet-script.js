@@ -66,6 +66,16 @@ function doPost(e) {
       return json({ ok: true });
     }
     if (body.action === 'add') { addEntry(sh, body.entry); return json({ ok: true }); }
+    if (body.action === 'delete') {
+      // 刪除單一則留言（依編號找到那一列）
+      const last = sh.getLastRow();
+      if (last >= 2) {
+        const ids = sh.getRange(2, 1, last - 1, 1).getValues().map(r => String(r[0]));
+        const i = ids.indexOf(String(body.id));
+        if (i !== -1) sh.deleteRow(i + 2);
+      }
+      return json({ ok: true });
+    }
     if (body.action === 'clear') {
       if (sh.getLastRow() > 1) sh.deleteRows(2, sh.getLastRow() - 1);
       return json({ ok: true });
