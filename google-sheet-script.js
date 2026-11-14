@@ -40,7 +40,7 @@ function doPost(e) {
   lock.waitLock(20000);
   try {
     const sh = getSheet();
-    if (body.action === 'list') return json({ responses: listAll(sh) });
+    if (body.action === 'list') return json({ responses: listAll(sh), url: SpreadsheetApp.getActiveSpreadsheet().getUrl() });
     if (body.action === 'add') { addEntry(sh, body.entry); return json({ ok: true }); }
     if (body.action === 'clear') {
       if (sh.getLastRow() > 1) sh.deleteRows(2, sh.getLastRow() - 1);

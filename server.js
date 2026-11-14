@@ -71,6 +71,7 @@ let responses = readJSON(RESPONSES_FILE, []); // 所有留言（記憶體中）
 let pending = [];                             // 還沒成功寫進試算表的留言
 let lastSheetError = '';
 let sheetLoaded = false;                      // 是否已成功從試算表讀回留言
+let sheetLink = '';                           // 試算表本身的網址（後台顯示連結用）
 
 const saveLocal = () => writeJSON(RESPONSES_FILE, responses);
 
@@ -95,6 +96,7 @@ async function sheetCall(payload) {
 async function loadFromSheet() {
   const data = await sheetCall({ action: 'list' });
   const fromSheet = data.responses || [];
+  if (data.url) sheetLink = data.url;
   const ids = new Set(fromSheet.map(r => r.id));
   const localOnly = responses.filter(r => !ids.has(r.id));
   responses = [...fromSheet, ...localOnly].sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
@@ -194,7 +196,8 @@ app.get('/api/admin/status', auth, (req, res) => res.json({
   storage: useSheet ? 'sheet' : 'local',
   count: responses.length,
   pending: pending.length,
-  error: lastSheetError
+  error: lastSheetError,
+  sheetLink
 }));
 
 app.put('/api/admin/config', auth, (req, res) => {
