@@ -34,7 +34,7 @@ function findMedia(base, exts) {
 // ===== 想永久保存的設定，直接改這裡（標題、問題、秒數…）=====
 const DEFAULT_CONFIG = {
   title: '給你的悄悄話',
-  intro: '請寫下你想說的話，送出後會立刻生成一段專屬影片 🎬',
+  intro: '請寫下你想說的話，大家的留言會一起做成一支影片 🎬',
   questions: ['你想對這個人說什麼話？', '你們之間最難忘的回憶是什麼？', '最後給他一句祝福吧！'],
   backgroundImage: findMedia('background', ['.jpg', '.jpeg', '.png', '.webp', '.gif']),
   music: null,           // 已取消背景音樂
@@ -95,6 +95,7 @@ app.post('/api/responses', (req, res) => {
   if (!Array.isArray(answers) || answers.length !== cfg.questions.length) {
     return res.status(400).json({ error: '回答格式不正確' });
   }
+  if (!String(name).trim()) return res.status(400).json({ error: '請填寫你的名字' });
   const clean = answers.map(a => String(a || '').trim().slice(0, 1000));
   if (clean.every(a => !a)) return res.status(400).json({ error: '請至少回答一題' });
 
