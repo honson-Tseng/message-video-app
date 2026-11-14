@@ -57,6 +57,9 @@ function writeJSON(file, data) {
 }
 const getConfig = () => {
   const cfg = { ...DEFAULT_CONFIG, ...readJSON(CONFIG_FILE, {}) };
+  // 後台上傳的圖片在 Render 重啟後會消失（media 裡的圖也可能被換掉）：檔案不在了就改用預設圖
+  if (cfg.backgroundImage && /^\/(uploads|media)\//.test(cfg.backgroundImage) &&
+      !fs.existsSync(path.join(__dirname, 'public', decodeURIComponent(cfg.backgroundImage)))) cfg.backgroundImage = null;
   // 後台沒上傳時，一律退回 media 資料夾裡的預設檔
   cfg.backgroundImage = cfg.backgroundImage || DEFAULT_CONFIG.backgroundImage;
   cfg.music = null;
@@ -97,6 +100,10 @@ async function loadFromSheet() {
   const data = await sheetCall({ action: 'list' });
   const fromSheet = data.responses || [];
   if (data.url) sheetLink = data.url;
+  if (data.config && typeof data.config === 'object') {
+    writeJSON(CONFIG_FILE, data.config); // 讀回後台設定
+    await restoreImage(data.config).catch(e => console.error('❌ 讀回背景圖片失敗：', e.message));
+  }
   const ids = new Set(fromSheet.map(r => r.id));
   const localOnly = responses.filter(r => !ids.has(r.id));
   responses = [...fromSheet, ...localOnly].sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
@@ -134,6 +141,34 @@ if (useSheet) setInterval(() => {
   else flushPending();
 }, 60 * 1000);
 
+// 後台上傳的背景圖片在 Render 重啟後會消失：從 Google 雲端硬碟抓回來
+async function restoreImage(cfg) {
+  const url = cfg.backgroundImage;
+  if (!url || !url.startsWith('/uploads/')) return;
+  const file = path.join(UPLOAD_DIR, path.basename(url));
+  if (fs.existsSync(file)) return;
+  const img = await sheetCall({ action: 'getImage' });
+  if (img.data) {
+    fs.writeFileSync(file, Buffer.from(img.data, 'base64'));
+    console.log('🖼️ 已從 Google 雲端硬碟讀回背景圖片');
+  }
+}
+
+// 儲存後台設定：本機一份，Google 一份（網站重啟後從 Google 讀回）
+async function saveConfig(cfg) {
+  writeJSON(CONFIG_FILE, cfg);
+  if (!useSheet) return { _storage: 'local' };
+  try {
+    await sheetCall({ action: 'setConfig', config: cfg });
+    return { _storage: 'sheet', _savedToSheet: true };
+  } catch (e) {
+    const msg = e.message === '未知的動作'
+      ? 'Google Apps Script 是舊版，請貼上新版程式並用「新版本」重新部署'
+      : e.message;
+    return { _storage: 'sheet', _savedToSheet: false, _error: msg };
+  }
+}
+
 app.use(express.json({ limit: '1mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -144,7 +179,7 @@ const upload = multer({
     filename: (req, file, cb) =>
       cb(null, Date.now() + '-' + crypto.randomBytes(4).toString('hex') + path.extname(file.originalname).toLowerCase())
   }),
-  limits: { fileSize: 30 * 1024 * 1024 },
+  limits: { fileSize: 10 * 1024 * 1024 }, // 最大 10MB
   fileFilter: (req, file, cb) => {
     const ok = req.query.kind === 'music' ? file.mimetype.startsWith('audio/') : file.mimetype.startsWith('image/');
     cb(ok ? null : new Error('檔案類型不符'), ok);
@@ -200,7 +235,7 @@ app.get('/api/admin/status', auth, (req, res) => res.json({
   sheetLink
 }));
 
-app.put('/api/admin/config', auth, (req, res) => {
+app.put('/api/admin/config', auth, async (req, res) => {
   const b = req.body || {};
   const cfg = getConfig();
   if (typeof b.title === 'string') cfg.title = b.title.slice(0, 100);
@@ -213,28 +248,44 @@ app.put('/api/admin/config', auth, (req, res) => {
   if (b.overlay !== undefined) cfg.overlay = Math.min(0.8, Math.max(0, Number(b.overlay)));
   if (['16:9', '9:16'].includes(b.aspect)) cfg.aspect = b.aspect;
   if (typeof b.outro === 'string') cfg.outro = b.outro.slice(0, 100);
-  writeJSON(CONFIG_FILE, cfg);
-  res.json(cfg);
+  const result = await saveConfig(cfg);
+  res.json({ ...cfg, ...result });
 });
 
 // kind=image 換背景圖；kind=music 換背景音樂
-app.post('/api/admin/upload', auth, upload.single('file'), (req, res) => {
+app.post('/api/admin/upload', auth, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: '沒有收到檔案' });
   const cfg = getConfig();
   const key = req.query.kind === 'music' ? 'music' : 'backgroundImage';
   removeUpload(cfg[key]);
   cfg[key] = '/uploads/' + req.file.filename;
-  writeJSON(CONFIG_FILE, cfg);
-  res.json(cfg);
+  // 圖片也存一份到 Google 雲端硬碟
+  let imageError = '';
+  if (useSheet && key === 'backgroundImage') {
+    try {
+      await sheetCall({
+        action: 'saveImage', mime: req.file.mimetype, name: req.file.filename,
+        data: fs.readFileSync(req.file.path).toString('base64')
+      });
+    } catch (e) {
+      imageError = e.message === '未知的動作'
+        ? 'Google Apps Script 是舊版，請貼上新版程式並用「新版本」重新部署'
+        : e.message;
+    }
+  }
+  const result = await saveConfig(cfg);
+  if (imageError) Object.assign(result, { _savedToSheet: false, _error: '圖片沒能存到 Google 雲端硬碟：' + imageError });
+  res.json({ ...cfg, ...result });
 });
 
-app.delete('/api/admin/media/:kind', auth, (req, res) => {
+app.delete('/api/admin/media/:kind', auth, async (req, res) => {
   const cfg = getConfig();
   const key = req.params.kind === 'music' ? 'music' : 'backgroundImage';
   removeUpload(cfg[key]);
   cfg[key] = null;
-  writeJSON(CONFIG_FILE, cfg);
-  res.json(cfg);
+  if (useSheet && key === 'backgroundImage') await sheetCall({ action: 'deleteImage' }).catch(() => {});
+  const result = await saveConfig(cfg);
+  res.json({ ...cfg, ...result });
 });
 
 // ?refresh=1：重新從試算表讀取（例如你直接在試算表刪了幾列）

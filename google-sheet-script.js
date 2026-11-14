@@ -24,6 +24,8 @@
 const SECRET = '請改成你自己的密碼';
 
 const SHEET_NAME = '留言';
+// 留言存在「留言」工作表；後台設定另外存在指令碼屬性（看不到也不用管）；
+// 後台上傳的背景圖片存在你的 Google 雲端硬碟。
 // 欄位：A 編號 | B 建立時間(ISO) | C 題目(JSON) | D 回答(JSON) | E 時間 | F 名字 | G 之後：每題的回答
 // A~D 是程式用的，會自動隱藏；請不要修改或移動欄位。
 
@@ -40,7 +42,29 @@ function doPost(e) {
   lock.waitLock(20000);
   try {
     const sh = getSheet();
-    if (body.action === 'list') return json({ responses: listAll(sh), url: SpreadsheetApp.getActiveSpreadsheet().getUrl() });
+    if (body.action === 'list') {
+      return json({ responses: listAll(sh), url: SpreadsheetApp.getActiveSpreadsheet().getUrl(), config: getStoredConfig() });
+    }
+    // 背景圖片：存在你的 Google 雲端硬碟（檔名開頭為「留言影片-背景」）
+    if (body.action === 'saveImage') {
+      deleteStoredImage();
+      const blob = Utilities.newBlob(Utilities.base64Decode(body.data), body.mime, '留言影片-背景-' + body.name);
+      const file = DriveApp.createFile(blob);
+      PropertiesService.getScriptProperties().setProperty('bgImageId', file.getId());
+      return json({ ok: true });
+    }
+    if (body.action === 'getImage') {
+      const id = PropertiesService.getScriptProperties().getProperty('bgImageId');
+      if (!id) return json({ none: true });
+      const b = DriveApp.getFileById(id).getBlob();
+      return json({ data: Utilities.base64Encode(b.getBytes()), mime: b.getContentType() });
+    }
+    if (body.action === 'deleteImage') { deleteStoredImage(); return json({ ok: true }); }
+    if (body.action === 'setConfig') {
+      // 後台設定（問題、標題、秒數…）存在這裡，網站重啟也不會被重置
+      PropertiesService.getScriptProperties().setProperty('config', JSON.stringify(body.config || {}));
+      return json({ ok: true });
+    }
     if (body.action === 'add') { addEntry(sh, body.entry); return json({ ok: true }); }
     if (body.action === 'clear') {
       if (sh.getLastRow() > 1) sh.deleteRows(2, sh.getLastRow() - 1);
@@ -94,6 +118,21 @@ function addEntry(sh, entry) {
     time, entry.name].concat(entry.answers || []);
   const row = sh.getLastRow() + 1;
   sh.getRange(row, 1, 1, values.length).setNumberFormat('@').setValues([values]);
+}
+
+function deleteStoredImage() {
+  const props = PropertiesService.getScriptProperties();
+  const id = props.getProperty('bgImageId');
+  if (id) {
+    try { DriveApp.getFileById(id).setTrashed(true); } catch (e) {}
+    props.deleteProperty('bgImageId');
+  }
+}
+
+function getStoredConfig() {
+  const s = PropertiesService.getScriptProperties().getProperty('config');
+  if (!s) return null;
+  try { return JSON.parse(s); } catch (e) { return null; }
 }
 
 function safeParse(s) {
