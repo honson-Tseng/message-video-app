@@ -224,9 +224,19 @@
         <div class="resp">
           <b>${esc(r.name || '匿名')}</b> <small>${new Date(r.createdAt).toLocaleString()}</small>
           ${r.questions.map((q, i) => r.answers[i] ? `<div><span class="muted">${esc(q)}</span><br>${esc(r.answers[i]).replace(/\n/g, '<br>')}</div>` : '').join('')}
-          <button class="secondary small" style="margin-top:8px" onclick="playResp('${r.id}')">▶ 生成這份的影片</button>
+          <div class="actions" style="margin-top:8px">
+            <button class="secondary small" onclick="playResp('${r.id}')">▶ 生成這份的影片</button>
+            <button class="danger small" onclick="deleteResp('${r.id}')">🗑 刪除</button>
+          </div>
         </div>`).join('') || '<p class="muted">還沒有人填寫</p>';
     }
+    window.deleteResp = async id => {
+      const r = responses.find(x => x.id === id);
+      if (!confirm(`確定要刪除「${r.name || '匿名'}」的留言嗎？Google 試算表裡也會一起刪除，無法復原。`)) return;
+      try { await api('/api/admin/responses/' + encodeURIComponent(id), { method: 'DELETE' }); }
+      catch (e) { alert(e.message); }
+      loadResponses();
+    };
     window.playResp = id => {
       const r = responses.find(x => x.id === id);
       play(VideoMaker.responsesToItems([r], false), r.name);
