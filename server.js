@@ -251,7 +251,10 @@ app.put('/api/admin/config', auth, async (req, res) => {
   const cfg = getConfig();
   if (typeof b.title === 'string') cfg.title = b.title.slice(0, 100);
   if (typeof b.intro === 'string') cfg.intro = b.intro.slice(0, 500);
-  if (Array.isArray(b.questions)) cfg.questions = b.questions.map(q => String(q).trim()).filter(Boolean).slice(0, 20);
+  // 題目可以換行：保留中間的換行和空格，只去掉頭尾空白行
+  if (Array.isArray(b.questions)) cfg.questions = b.questions
+    .map(q => String(q).replace(/\r\n/g, '\n').replace(/^\s*\n|\s+$/g, '').slice(0, 500))
+    .filter(q => q.trim()).slice(0, 20);
   if (b.secondsPerLine) cfg.secondsPerLine = Math.min(20, Math.max(2, Number(b.secondsPerLine)));
   if ([3, 4].includes(Number(b.perPage))) cfg.perPage = Number(b.perPage);
   if (/^#[0-9a-f]{6}$/i.test(b.textColor)) cfg.textColor = b.textColor;
