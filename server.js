@@ -46,7 +46,8 @@ const DEFAULT_CONFIG = {
   fontSize: 56,
   overlay: 0.35,         // 背景變暗程度 0~0.8，讓字更清楚
   aspect: '16:9',        // '16:9' 橫式 或 '9:16' 直式（手機/限動）
-  outro: '♥'             // 合併影片的片尾文字（空白＝沒有片尾）
+  outro: '♥',            // 合併影片的片尾文字（空白＝沒有片尾）
+  maxChars: 50           // 每題回答的字數上限
 };
 
 function readJSON(file, fallback) {
@@ -215,7 +216,9 @@ app.post('/api/responses', async (req, res) => {
     return res.status(400).json({ error: '回答格式不正確' });
   }
   if (!String(name).trim()) return res.status(400).json({ error: '請填寫你的名字' });
-  const clean = answers.map(a => String(a || '').trim().slice(0, 1000));
+  const max = cfg.maxChars || 50;
+  const clean = answers.map(a => String(a || '').trim());
+  if (clean.some(a => [...a].length > max)) return res.status(400).json({ error: `每題限 ${max} 字以內` });
   if (clean.every(a => !a)) return res.status(400).json({ error: '請至少回答一題' });
 
   const entry = {
