@@ -54,3 +54,7 @@ label.question { display: flex; gap: 6px; align-items: baseline; line-height: 1.
 label.question .qnum { flex: none; }
 .q-item { align-items: flex-start; }
 .q-item textarea { flex: 1; min-height: 64px; }
+.qtext .limit { display: block; color: #d6334f; font-size: .85rem; font-weight: 700; white-space: normal; }
+textarea.invalid { border-color: #d6334f; background: #fff6f7; }
+.counter { text-align: right; font-size: .85rem; color: #9a8fa0; margin-top: 4px; }
+.counter.over { color: #d6334f; font-weight: 700; }

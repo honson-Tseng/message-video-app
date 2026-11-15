@@ -29,19 +29,34 @@
   </div>
 
   <script>
-    let config;
+    let config, MAX = 50;
     const $ = id => document.getElementById(id);
+    const countChars = s => [...s.trim()].length; // 中文、英文、emoji 都算一個字
 
     async function init() {
       config = await (await fetch('/api/config')).json();
+      MAX = config.maxChars || 50;
       document.title = config.title;
       $('title').textContent = config.title;
       $('intro').textContent = config.intro || '';
       // 題目可以換行：每一行都靠左對齊在題號後面（自動去掉每行開頭的空格）
       $('questions').innerHTML = config.questions.map((q, i) => `
-        <label for="q${i}" class="question"><span class="qnum">${i + 1}.</span><span class="qtext">${escapeHtml(q.replace(/^[ \t\u3000]+/gm, ''))}</span></label>
-        <textarea id="q${i}" maxlength="1000" placeholder="寫下你想說的話…"></textarea>
+        <label for="q${i}" class="question"><span class="qnum">${i + 1}.</span><span class="qtext">${escapeHtml(q.replace(/^[ \t\u3000]+/gm, ''))}<span class="limit">*限${MAX}字以內</span></span></label>
+        <textarea id="q${i}" placeholder="寫下你想說的話…"></textarea>
+        <div class="counter" id="c${i}">0 / ${MAX}</div>
+        <div class="field-error hidden" id="e${i}">超過 ${MAX} 字了，請刪減一些再送出</div>
       `).join('');
+      config.questions.forEach((_, i) => $('q' + i).addEventListener('input', () => checkLength(i)));
+    }
+
+    // 即時顯示字數；超過就變紅
+    function checkLength(i) {
+      const n = countChars($('q' + i).value), over = n > MAX;
+      $('c' + i).textContent = `${n} / ${MAX}`;
+      $('c' + i).classList.toggle('over', over);
+      $('q' + i).classList.toggle('invalid', over);
+      if (!over) $('e' + i).classList.add('hidden');
+      return !over;
     }
 
     function escapeHtml(s) {
@@ -62,6 +77,13 @@
         $('name').classList.add('invalid');
         $('name').focus();
         $('name').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+      }
+      const tooLong = config.questions.findIndex((_, i) => !checkLength(i));
+      if (tooLong !== -1) {
+        $('e' + tooLong).classList.remove('hidden');
+        $('q' + tooLong).focus();
+        $('q' + tooLong).scrollIntoView({ behavior: 'smooth', block: 'center' });
         return;
       }
       if (answers.every(a => !a)) { $('formMsg').textContent = '請至少回答一題喔！'; return; }
@@ -87,7 +109,7 @@
     });
 
     $('moreBtn').addEventListener('click', () => {
-      config.questions.forEach((_, i) => $('q' + i).value = '');
+      config.questions.forEach((_, i) => { $('q' + i).value = ''; checkLength(i); });
       $('thanksCard').classList.add('hidden');
       $('form').classList.remove('hidden');
       window.scrollTo({ top: 0, behavior: 'smooth' });
