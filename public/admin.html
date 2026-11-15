@@ -144,18 +144,18 @@
 
     function renderQuestions(qs) {
       $('qList').innerHTML = qs.map(q => `
-        <div class="q-item"><input type="text" value="${esc(q)}" /><button class="danger small" onclick="this.parentNode.remove()">刪除</button></div>`).join('');
+        <div class="q-item"><textarea rows="2" placeholder="輸入題目，可以按 Enter 換行">${esc(q)}</textarea><button class="danger small" onclick="this.parentNode.remove()">刪除</button></div>`).join('');
     }
     $('addQ').onclick = () => {
-      const qs = [...$('qList').querySelectorAll('input')].map(i => i.value);
+      const qs = [...$('qList').querySelectorAll('textarea')].map(i => i.value);
       renderQuestions([...qs, '']);
-      $('qList').lastElementChild.querySelector('input').focus();
+      $('qList').lastElementChild.querySelector('textarea').focus();
     };
 
     function collectConfig() {
       return {
         title: $('title').value, intro: $('intro').value,
-        questions: [...$('qList').querySelectorAll('input')].map(i => i.value),
+        questions: [...$('qList').querySelectorAll('textarea')].map(i => i.value),
         secondsPerLine: $('secondsPerLine').value, fontSize: $('fontSize').value,
         textColor: $('textColor').value, aspect: $('aspect').value, overlay: $('overlay').value, outro: $('outro').value, perPage: $('perPage').value
       };
@@ -223,9 +223,8 @@
       $('respList').innerHTML = responses.slice().reverse().map(r => `
         <div class="resp">
           <b>${esc(r.name || '匿名')}</b> <small>${new Date(r.createdAt).toLocaleString()}</small>
-          ${r.questions.map((q, i) => r.answers[i] ? `<div><span class="muted">${esc(q)}</span><br>${esc(r.answers[i]).replace(/\n/g, '<br>')}</div>` : '').join('')}
+          ${r.questions.map((q, i) => r.answers[i] ? `<div><span class="muted question">${esc(q)}</span><br>${esc(r.answers[i]).replace(/\n/g, '<br>')}</div>` : '').join('')}
           <div class="actions" style="margin-top:8px">
-            <button class="secondary small" onclick="playResp('${r.id}')">▶ 生成這份的影片</button>
             <button class="danger small" onclick="deleteResp('${r.id}')">🗑 刪除</button>
           </div>
         </div>`).join('') || '<p class="muted">還沒有人填寫</p>';
@@ -236,10 +235,6 @@
       try { await api('/api/admin/responses/' + encodeURIComponent(id), { method: 'DELETE' }); }
       catch (e) { alert(e.message); }
       loadResponses();
-    };
-    window.playResp = id => {
-      const r = responses.find(x => x.id === id);
-      play(VideoMaker.responsesToItems([r], false), r.name);
     };
     $('allVideoBtn').onclick = () => {
       const lines = VideoMaker.responsesToItems(responses);

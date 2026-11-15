@@ -49,3 +49,8 @@ input.invalid { border-color: #d6334f; background: #fff6f7; }
 .storage.ok { background: #e9f7ee; color: #1e6b3a; }
 .storage.warn { background: #fff4e5; color: #8a4b00; }
 .storage .sheet-link { margin-top: 10px; padding: 8px 14px; font-size: .9rem; background: #1e8e4e; }
+.question { white-space: pre-wrap; }
+label.question { display: flex; gap: 6px; align-items: baseline; line-height: 1.6; }
+label.question .qnum { flex: none; }
+.q-item { align-items: flex-start; }
+.q-item textarea { flex: 1; min-height: 64px; }
