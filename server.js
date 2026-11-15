@@ -89,7 +89,11 @@ async function sheetCall(payload) {
   const text = await res.text();
   let data;
   try { data = JSON.parse(text); } catch {
-    throw new Error('試算表沒有正確回應，請確認 Apps Script 部署時「誰可以存取」選了「所有人」');
+    // Google 回傳的是錯誤網頁：抓出裡面的文字當作錯誤原因
+    const reason = text.replace(/<style[\s\S]*?<\/style>|<script[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ').replace(/&[a-z#0-9]+;/gi, ' ').replace(/\s+/g, ' ').trim().slice(0, 200);
+    throw new Error('Google 沒有正確回應' + (reason ? `（${reason}）` : '') +
+      '。請確認 Apps Script 已用「新版本」部署，且「誰可以存取」選了「所有人」');
   }
   if (data.error) throw new Error(data.error);
   return data;

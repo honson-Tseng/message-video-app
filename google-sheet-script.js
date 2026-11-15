@@ -33,7 +33,23 @@ function doGet() {
   return ContentService.createTextOutput('留言儲存服務運作中 ✅');
 }
 
+// 測試雲端硬碟權限：在上方下拉選單選 testDrive，按「執行」
+function testDrive() {
+  const f = DriveApp.createFile(Utilities.newBlob('test', 'text/plain', '留言影片-測試.txt'));
+  f.setTrashed(true);
+  Logger.log('✅ 雲端硬碟權限正常');
+}
+
 function doPost(e) {
+  // 任何錯誤都回傳給網站，後台就能看到原因
+  try {
+    return handle(e);
+  } catch (err) {
+    return json({ error: 'Google 端錯誤：' + (err && err.message ? err.message : String(err)) });
+  }
+}
+
+function handle(e) {
   let body;
   try { body = JSON.parse(e.postData.contents); } catch (err) { return json({ error: '格式錯誤' }); }
   if (body.key !== SECRET) return json({ error: 'SHEET_KEY 密碼不正確' });
